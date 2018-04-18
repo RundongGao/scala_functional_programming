@@ -16,7 +16,7 @@ sealed trait Stream[+A]{
 	}
 
     // this is wrong.. the order is revesed... but stacksafe XD
-	def take(n: Int): Stream[A] = {
+	def takeWrong(n: Int): Stream[A] = {
 		@annotation.tailrec
 		def go(s: Stream[A], acc: Stream[A], n: Int): Stream[A] = {
 			if(n == 0) acc
@@ -29,7 +29,7 @@ sealed trait Stream[+A]{
 	} 
 
     // this is wrong.. the order is revesed... but stacksafe XD
-	def takeBetter(n: Int): Stream[A] = {
+	def takeStillWrong(n: Int): Stream[A] = {
 		@annotation.tailrec
 		def go(s: Stream[A], acc: Stream[A], n: Int): Stream[A] =  s match {
 			case Cons(h, t) if n > 0 => go(t(), cons(h(), acc), n-1)
@@ -39,8 +39,8 @@ sealed trait Stream[+A]{
 	}
 
     // not stacksafe through...
-	def takeRight(n: Int): Stream[A] = this match {
-		case Cons(h, t) if n > 1 => cons(h(), t().takeRight(n-1))
+	def take(n: Int): Stream[A] = this match {
+		case Cons(h, t) if n > 1 => cons(h(), t().take(n-1))
 		case Cons(h, _) if n == 1 => cons(h(), empty)
 		case Empty => Empty
 	}
@@ -52,7 +52,7 @@ sealed trait Stream[+A]{
 
 	def takeWhile(p: A => Boolean): Stream[A] = this match {
 		case Cons(h, t) if p(h()) => cons(h(), t().takeWhile(p))
-		case Empty => Empty
+		case _ => Empty
 	}
 
 	def exists(p: A => Boolean): Boolean =
@@ -71,6 +71,41 @@ sealed trait Stream[+A]{
 
 	def map[B](f: A => B): Stream[B] = 
 		foldRight(empty[B])((h, t) => cons(f(h), t))
+
+	def mapUnfold[B](f: A => B): Stream[B] = unfold(this){ 
+		case Empty => None
+		case Cons(h,t) => Some((f(h()), t()))
+	}
+
+	def takeUnford(n: Int): Stream[A] = unfold((this,n)){
+		case (Cons(h, t), n) if n > 1 => Some(h(), (t(), n-1))
+		case _ => None
+	}
+
+	def takeWhileUnford(p: A => Boolean): Stream[A] = unfold(this) {
+		case Cons(h, t) if p(h()) => Some(h(), t())
+		case _ => None
+	}
+
+	def zipWith[B,C](b: Stream[B])(f: (A,B) => C): Stream[C] = unfold((this, b)) {
+		case (Cons(ah, at), Cons(bh, bt)) => Some((f(ah(), bh()), (at(), bt())))
+		case _ => None
+	}
+ 
+
+	def zipAll[B](b: Stream[B]): Stream[(Option[A],Option[B])] = unfold((this, b)) {
+		case (Cons(ah, at), Cons(bh, bt)) => Some((Some(ah()),  Some(bh())), (at(), bt()))
+		case (Empty, Cons(bh, bt)) =>        Some((None,        Some(bh())), (empty[A], bt()))
+		case (Cons(ah, at), Empty) =>        Some((Some(ah()),  None),       (at(), empty[B]))
+		case (_, _) => None
+	}
+
+	def tails: Stream[Stream[A]] =
+		unfold(this) {
+			case Cons(h,t) => Some((this, t().drop(1)))
+			case _ => None
+		}
+
 
 	def filter(f: A => Boolean): Stream[A] = 
 		foldRight(empty[A])((h, t) => if(f(h)) cons(h,t) else t)
@@ -107,8 +142,11 @@ object Stream {
 		}
 	}
 
-	def constatUnfold[A](a: A): Stream[A] =
-		unfold(a)(z => Some((a, a+1))) 
+	def constantUnfold[A](a: A): Stream[A] = unfold(a)(z => Some((z, z))) 
+
+	def fromUnfold(n: Int): Stream[Int] = unfold(n)(z => Some((z, z+1)))
+
+	def fibsUnfold: Stream[Int] = unfold((0,1)) { case (a, b) => Some(a, (b, a+b)) }
 
 
 	def cons[A](hd: => A, tl: => Stream[A]): Stream[A] = {
