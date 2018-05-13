@@ -14,9 +14,14 @@
 //def &&(p: Prop): Prop = new Prop {
 //	def check = Prop.this.check && p.check
 //}
-case class Gen[A](sample: State[RNG,A])
-object Gen {
-	def choose(start: Int, stopExclusive: Int): Gen[Int] = {
-		Gen( s => )
-	}
-}
+//case class Gen[A](sample: State[RNG,A])
+//object Gen {
+//	def choose(start: Int, stopExclusive: Int): Gen[Int] = {
+//		Gen( s => )
+//	}
+//}
+
+val intList = Gen.listOf(Gen.choose(0,100))
+val prop = forAll(intList)(ns => ns.reverse.reverse == ns) &&
+	       forAll(intLIst)(ns => ns.headOption == ns.reverse.lastOption)
+val failingProp = forAll(intList)(ns => ns.reverse == ns)
