@@ -1,3 +1,5 @@
+package fpinscala.state
+
 trait RNG {
 	def nextInt: (Int, RNG)
 }
@@ -9,9 +11,9 @@ case class SimpleRNG(seed: Long) extends RNG {
 		(n, nextRNG)
 	}
 }
-type Rand[+A] = RNG => (A, RNG)
 
 object RNG {
+    type Rand[+A] = RNG => (A, RNG)
 	def nonNegativeInt(rng: RNG): (Int, RNG) = {
 		val (n, newRng) = rng.nextInt
 	    (if (n < 0) -n+1 else n, newRng) 
@@ -145,7 +147,7 @@ case class State[S, +A](run: S => (A, S)) {
 
 object State {
     def unit[S, A](a: A): State[S, A] = State( s => (a, s) )
-    def get[S]: State[S, S] State(s => (s, s))
+    def get[S]: State[S, S] = State(s => (s, s))
     def set[S](s: S): State[S, Unit] = State(_ => ((), s))
     //def set[S](s: S): State[S, Unit] 
 
@@ -155,25 +157,3 @@ object State {
     } yield ()
 }
 
-sealed trait Input
-case object Coin extends Input
-case object Turn extends Input
-case class Machine(locked: Boolean, candies: Int, coins: Int)
-
-object Candy {
-  def update = (i: Input) => (s: Machine) =>
-    (i, s) match {
-      case (_, Machine(_, 0, _)) => s
-      case (Coin, Machine(false, _, _)) => s
-      case (Turn, Machine(true, _, _)) => s
-      case (Coin, Machine(true, candy, coin)) =>
-        Machine(false, candy, coin + 1)
-      case (Turn, Machine(false, candy, coin)) =>
-        Machine(true, candy - 1, coin)
-    }
-
-  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = for {
-    _ <- sequence(inputs map (modify[Machine] _ compose update))
-    s <- get
-  } yield (s.coins, s.candies)
-}

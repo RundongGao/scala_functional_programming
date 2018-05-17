@@ -21,7 +21,29 @@
 //	}
 //}
 
-val intList = Gen.listOf(Gen.choose(0,100))
-val prop = forAll(intList)(ns => ns.reverse.reverse == ns) &&
-	       forAll(intLIst)(ns => ns.headOption == ns.reverse.lastOption)
-val failingProp = forAll(intList)(ns => ns.reverse == ns)
+//val intList = Gen.listOf(Gen.choose(0,100))
+//val prop = forAll(intList)(ns => ns.reverse.reverse == ns) &&
+//	       forAll(intLIst)(ns => ns.headOption == ns.reverse.lastOption)
+//val failingProp = forAll(intList)(ns => ns.reverse == ns)
+
+
+//def listOfN[A](n: Int, a: Gen[A]): Gen[List[A]]
+//def forAll[A](a: Gen[A])(f: A => Boolean): Prop
+
+//trait Prop { def check: Either[(FailedCase, SuccessCount), SuccessCount] }
+
+import fpinscala.state._
+import Gen._
+import Prop._
+
+object Prop {
+	type FailedCase = String
+	type SuccessCount = Int
+}
+
+case class Gen[A](sample: State[RNG, A])
+object Gen {
+	//def listOf[A](a: Gen[A]): Gen[List[A]]
+	def choose(start: Int, stopExclusive: Int): Gen[Int] = 
+		Gen(State(RNG.nonNegativeLessThan(stopExclusive)).map(n => n - start))
+}
