@@ -33,17 +33,20 @@
 //trait Prop { def check: Either[(FailedCase, SuccessCount), SuccessCount] }
 
 import fpinscala.state._
-import Gen._
-import Prop._
+
 
 object Prop {
 	type FailedCase = String
 	type SuccessCount = Int
 }
 
-case class Gen[A](sample: State[RNG, A])
+case class Gen[A](sample: State[RNG, A]){
+}
 object Gen {
-	//def listOf[A](a: Gen[A]): Gen[List[A]]
+	def unit[A](a: => A): Gen[A] = Gen(State.unit(a))
+	def boolean: Gen[Boolean] = Gen(State(RNG.nonNegativeInt).map(n => n % 2 == 0))
+	def listOfN[A](n: Int, g: Gen[A]): Gen[List[A]] =
+		Gen(State.sequence(List.fill(n)(g.sample)))
 	def choose(start: Int, stopExclusive: Int): Gen[Int] = 
-		Gen(State(RNG.nonNegativeLessThan(stopExclusive)).map(n => n - start))
+		Gen(State(RNG.nonNegativeLessThan(stopExclusive - start)).map(n => n + start))
 }
