@@ -1,3 +1,4 @@
+package fpinscala.stream
 import Stream._
 
 sealed trait Stream[+A]{
@@ -91,6 +92,9 @@ sealed trait Stream[+A]{
 		case (Cons(ah, at), Cons(bh, bt)) => Some((f(ah(), bh()), (at(), bt())))
 		case _ => None
 	}
+
+	def zip[B](s2: Stream[B]): Stream[(A,B)] =
+    	zipWith(s2)((_,_))
  
 
 	def zipAll[B](b: Stream[B]): Stream[(Option[A],Option[B])] = unfold((this, b)) {
@@ -105,6 +109,12 @@ sealed trait Stream[+A]{
 			case Cons(h,t) => Some((this, t().drop(1)))
 			case _ => None
 		}
+
+	@annotation.tailrec
+    final def find(f: A => Boolean): Option[A] = this match {
+    	case Empty => None
+    	case Cons(h, t) => if (f(h())) Some(h()) else t().find(f)
+ 	}
 
 
 	def filter(f: A => Boolean): Stream[A] = 
