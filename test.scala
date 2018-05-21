@@ -21,10 +21,7 @@
 //	}
 //}
 
-//val intList = Gen.listOf(Gen.choose(0,100))
-//val prop = forAll(intList)(ns => ns.reverse.reverse == ns) &&
-//	       forAll(intLIst)(ns => ns.headOption == ns.reverse.lastOption)
-//val failingProp = forAll(intList)(ns => ns.reverse == ns)
+
 
 
 
@@ -35,23 +32,31 @@ import fpinscala.stream._
 //type Result = Option[(FailedCase, SuccessCount)]
 //case class Prop(run: TestCases => Result)
 
-case class Prop(run: (TestCases, RNG) => Result) {
+case class Prop(run: (Prop.MaxSize, Prop.TestCases, RNG) => Prop.Result) {
 	def &&(p: Prop): Prop = Prop {
-		(n, rng) => (run(n, rng), p.run(n, rng)) match {
-			case (Prop.Passed, Prop.Passed) => Prop.Passed
-			case (Prop.Falsified(failure, success), Prop.Passed) => Prop.Falsified(failure, success)
-			case (Prop.Passed, Prop.Falsified(failure, success)) => Prop.Falsified(failure, success)
-			case (Prop.Falsified(failure_1, success_1), Prop.Falsified(failure_2, success_2)) => Prop.Falsified(failure_1 + failure_2, success_1 + success_2)
+		(max, n, rng) => (run(max, n, rng)) match {
+			case Prop.Falsified(failure, success) => Prop.Falsified(failure, success)
+			case _ => p.run(max, n, rng)
+		}
+	}
+
+	def ||(p: Prop): Prop = Prop {
+		(max, n, rng) => (run(max, n, rng)) match {
+			case Prop.Passed => p.run(max, n, rng)
+			case x => x
 		}
 	}
 }
-sealed trait Result {
- 	def isFalsified: Boolean
-}
+
 object Prop {
 	type FailedCase = String
 	type SuccessCount = Int
 	type TestCases = Int
+	type MaxSize = Int
+
+	sealed trait Result {
+ 	 	def isFalsified: Boolean
+ 	}
 
 	case object Passed extends Result {
 		def isFalsified = false
@@ -62,16 +67,38 @@ object Prop {
 		def isFalsified = true
 	}
 
-	def forAll[A](as: Gen[A])(f: A => Boolean): Prop = Prop {
-		(n, rng) => randomStream(as)(rng).zip(Stream.from(0)).take(n).map {
-			case (a, i) => try {
-				if (f(a)) Passed else Falsified(a.toString, i)
-			} catch { case e: Exception => Falsified(buildMsg(a, e), i)}
-		}.find(_.isFalsified).getOrElse(Passed)
+	def run(p: Prop, maxSize: Int = 100, testCases: Int = 100,
+	        rng: RNG = SimpleRNG(System.currentTimeMillis)): Unit =
+		p.run(maxSize, testCases, rng) match {
+			case Falsified(msg, n) =>
+				println(s"! Falsified after $n passed tests: \n $msg")
+			case Passed =>
+				println(s"+ Ok, Passed $testCases test.")
+		}
+
+
+	def forAll[A](g: SGen[A])(f: A => Boolean): Prop =
+		forAll(g(_))(f)
+
+	def forAll[A](g: Int => Gen[A])(f: A => Boolean): Prop = Prop {
+		(max, n, rng) => 
+			val casesPerSize = (n + (max - 1)) / max
+			val props: Stream[Prop] =
+				Stream.from(0).take((n min max) + 1).map(i => forAll(g(i))(f))
+			val prop: Prop =
+				props.map(p => Prop { (max, _, rng) =>
+					p.run(max, casesPerSize, rng)
+				}).toList.reduce(_ && _)
+			prop.run(max, n, rng)
 	}
 
-
-
+	def forAll[A](as: Gen[A])(f: A => Boolean): Prop = Prop {
+	 	(_max, n, rng) => randomStream(as)(rng).zip(Stream.from(0)).take(n).map {
+	 		case (a, i) => try {
+	 			if (f(a)) Passed else Falsified(a.toString, i)
+	 		} catch { case e: Exception => Falsified(buildMsg(a, e), i)}
+	  	}.find(_.isFalsified).getOrElse(Passed)
+	}
 
 	def randomStream[A](g: Gen[A])(rng: RNG): Stream[A] =
 		Stream.unfold(rng)(rng => Some(g.sample.run(rng)))
@@ -100,14 +127,45 @@ object Gen {
 		Gen(State(RNG.nonNegativeLessThan(stopExclusive - start)).map(n => n + start))
 }
 
-case class Gen[A](sample: State[RNG, A]){
+case class Gen[+A](sample: State[RNG, A]){
 	def flatMap[B](f: A => Gen[B]): Gen[B] = 
 		Gen(sample.flatMap(a => f(a).sample))
+	def map[B](f: A => B): Gen[B] =
+		Gen(sample.map(a => f(a)))
 	def listOfN(n: Int): Gen[List[A]] =
 		Gen.listOfN(n, Gen(sample))
 	def listOfN(size: Gen[Int]): Gen[List[A]] =
 		size flatMap(n => this.listOfN(n))
+	def unsized: SGen[A] = SGen(_ => this)
 }
+
+def ListOf[A](g: Gen[A]): SGen[List[A]] = 
+	SGen(n => g.listOfN(n))
+
+def listOf1[A](g: Gen[A]): SGen[List[A]] = 
+	SGen(n => g.listOfN(1 max n))
+
+case class SGen[+A](g: Int => Gen[A]) {
+	def flatMap[B](f: A => SGen[B]): SGen[B] = 
+		SGen(n => g(n) flatMap (a => f(a).g(n)))
+	def map[B](f: A => B): SGen[B] =
+		SGen(g(_) map (f(_)))
+	def apply(n: Int): Gen[A] = g(n)
+}
+
+val smallInt = Gen.choose(-10, 10)
+val maxProp = Prop.forAll(listOf1(smallInt)) {
+	ns => 
+		val max = ns.max
+		!ns.exists(_ > max)
+}
+Prop.run(maxProp)
+
+val intList = listOf1(Gen.choose(0,100))
+val prop = Prop.forAll(intList)(ns => ns.reverse.reverse == ns) && Prop.forAll(intList)(ns => ns.headOption == ns.reverse.lastOption)
+val failingProp = Prop.forAll(intList)(ns => ns.reverse == ns)
+Prop.run(prop)
+Prop.run(failingProp)
 
 
 
